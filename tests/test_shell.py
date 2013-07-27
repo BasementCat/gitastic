@@ -30,22 +30,25 @@ class TestShell(unittest.TestCase):
 		self._stop_sshd=threading.Event()
 		self._sshd_thread=threading.Thread(target=self._run_sshd)
 		self._sshd_thread.start()
-		time.sleep(1) #let the sshd start up
+		#let the sshd start up
+		time.sleep(1)
+		#now make sure the sshd is accepting connections or we can't keep testing
+		s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		res=s.connect_ex(("127.0.0.1", self.sshd_port))
+		s.close()
+		self.assertEqual(res, 0, "The test SSHD is not accepting connections")
 
 	def tearDown(self):
 		self._stop_sshd.set()
 		self._sshd_thread.join()
 
 	def _run_sshd(self):
-		sshd_proc=subprocess.Popen([self.sshd, "-h", self.host_key, "-D", "-e", "-f", self.sshd_config, "-p", str(self.sshd_port)])
+		sshd_proc=subprocess.Popen([self.sshd, "-q", "-h", self.host_key, "-D", "-f", self.sshd_config, "-p", str(self.sshd_port)])
 		self._stop_sshd.wait()
 		sshd_proc.terminate()
 
 	def test_nothing(self):
-		s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		res=s.connect_ex(("127.0.0.1", self.sshd_port))
-		s.close()
-		self.assertEqual(res, 0)
+		pass
 
 # class TestSequenceFunctions(unittest.TestCase):
 
