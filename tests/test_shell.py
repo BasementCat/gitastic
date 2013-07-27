@@ -131,6 +131,8 @@ class TestShell(unittest.TestCase):
 
 	def test_clone(self):
 		for kinfo in self.client_keys:
+			if not kinfo["valid"]:
+				continue
 			keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
 			self.assertEqual(
 				self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
@@ -141,29 +143,53 @@ class TestShell(unittest.TestCase):
 				self.assertEqual(fp.read().strip(), "test")
 			shutil.rmtree(self.repo_clone_dir)
 
-# class TestSequenceFunctions(unittest.TestCase):
+	def test_push(self):
+		previous_test_string="test"
+		for kinfo in self.client_keys:
+			if not kinfo["valid"]:
+				continue
+			keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
+			self.assertEqual(
+				self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
+				0
+				)
+			self.assertTrue(os.path.exists(os.path.join(self.repo_clone_dir, "test.txt")))
+			with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
+				self.assertEqual(fp.read().strip(), previous_test_string)
+			with open(os.path.join(self.repo_clone_dir, "test.txt"), "w") as fp:
+				previous_test_string="testing_key_%s"%(str(kinfo['userid']),)
+				fp.write(previous_test_string)
+			current_dir=os.getcwd()
+			os.chdir(self.repo_clone_dir)
+			self.assertEqual(
+				self._shell("git commit -am 'test'"),
+				0
+				)
+			self.assertEqual(
+				self._shell("git push --all", env={"GIT_SSH_KEY": keyfile}),
+				0
+				)
+			os.chdir(current_dir)
+			shutil.rmtree(self.repo_clone_dir)
+			self.assertEqual(
+				self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
+				0
+				)
+			self.assertTrue(os.path.exists(os.path.join(self.repo_clone_dir, "test.txt")))
+			with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
+				self.assertEqual(fp.read().strip(), previous_test_string)
+			shutil.rmtree(self.repo_clone_dir)
 
-#     def setUp(self):
-#         self.seq = range(10)
-
-#     def test_shuffle(self):
-#         # make sure the shuffled sequence does not lose any elements
-#         random.shuffle(self.seq)
-#         self.seq.sort()
-#         self.assertEqual(self.seq, range(10))
-
-#         # should raise an exception for an immutable sequence
-#         self.assertRaises(TypeError, random.shuffle, (1,2,3))
-
-#     def test_choice(self):
-#         element = random.choice(self.seq)
-#         self.assertTrue(element in self.seq)
-
-#     def test_sample(self):
-#         with self.assertRaises(ValueError):
-#             random.sample(self.seq, 20)
-#         for element in random.sample(self.seq, 5):
-#             self.assertTrue(element in self.seq)
+	def test_clone_invalid_key(self):
+		for kinfo in self.client_keys:
+			if kinfo["valid"]:
+				continue
+			keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
+			self.assertEqual(
+				self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
+				128
+				)
+			self.assertFalse(os.path.exists(self.repo_clone_dir))
 
 if __name__ == '__main__':
     unittest.main()
