@@ -24,8 +24,7 @@ uri.path=str(uri.path) or (None if uri.scheme=="sqlite" else get_input("Database
 database=create_database(str(uri))
 store=Store(database)
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "schema"))
-schemas=__import__(uri.scheme).schema
+schemas=getattr(__import__("schema", globals(), locals(), [uri.scheme]), uri.scheme).schema
 del(sys.path[0])
 
 schema_change_id, applied_date, schema_version=None, None, -1
