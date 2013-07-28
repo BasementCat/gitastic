@@ -109,7 +109,7 @@ class TestShell(unittest.TestCase):
 		shutil.rmtree(self.temp_dir)
 
 	def _run_sshd(self):
-		sshd_proc=subprocess.Popen([self.sshd, "-D", "-e", "-h", self.host_key, "-f", self.sshd_config, "-p", str(self.sshd_port),
+		sshd_proc=subprocess.Popen([self.sshd, "-D", "-q", "-h", self.host_key, "-f", self.sshd_config, "-p", str(self.sshd_port),
 			"-o", "AuthorizedKeysFile=%s"%(self.ssh_authorized_keys,), "-o", "StrictModes=no"], stdout=sys.stderr, stderr=sys.stderr, env=self.shell_env)
 		pid=sshd_proc.pid
 		self._stop_sshd.wait()
