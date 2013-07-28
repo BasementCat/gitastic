@@ -48,7 +48,7 @@ class TestShell(unittest.TestCase):
 		self.ssh_authorized_keys=os.path.join(self.ssh_home_dir, ".ssh", "authorized_keys")
 		os.makedirs(os.path.join(self.ssh_home_dir, ".ssh"))
 		#generate authorized_keys file
-		gitasticshell=os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic", "bin", "gitastic-shell")
+		gitasticshell=os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic", "gitastic-shell")
 		with open(self.ssh_authorized_keys, "w") as fp_auth:
 			for kinfo in self.client_keys:
 				if not kinfo["valid"]:
