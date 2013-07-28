@@ -25,7 +25,9 @@ def connect():
 	database=create_database(gitastic.config.get("DatabaseURI", do_except=True))
 
 class Model(object):
-	pass
+	def __init__(self, **kwargs):
+		for k,v in kwargs.items():
+			setattr(self, k, v)
 
 # class User(Model):
 # 	__storm_table__="user"
