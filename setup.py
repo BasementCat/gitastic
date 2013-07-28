@@ -16,6 +16,6 @@ setup (
     url="http://github.com/basementcat/gitastic",
     packages=["gitastic", "tests"],
     test_suite="nose.collector",
-    install_requires=["storm", "furl"],
+    install_requires=["storm", "furl", "multiconfig"],
     tests_require=["nose"]
 )
