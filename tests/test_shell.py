@@ -11,15 +11,35 @@ import copy
 import getpass
 import signal
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic"))
+from lib import gitastic, database
+gitastic.configDir=os.path.join(os.path.dirname(__file__), "config")
+gitastic.init()
+
 class TestShell(unittest.TestCase):
+    def _drop_tables(self):
+        database.getStore().execute("SET FOREIGN_KEY_CHECKS = 0;")
+        for table in database.getStore().execute("show tables;"):
+            database.getStore().execute("drop table %s;"%(table[0],))
+        database.getStore().execute("SET FOREIGN_KEY_CHECKS = 1;")
+
     def setUp(self):
+        #Set this to True for extra SSH debugging
+        self.ssh_debug=True
+
+        #init the database
+        self._drop_tables()
+        subprocess.call([os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic", "update-db")),
+            gitastic.config.get("DatabaseURI")])
+
+        #init paths
         self.sshd=subprocess.check_output("which sshd", shell=True).strip()
-        self.ssh_path=os.path.join(os.path.dirname(__file__), "ssh")
+        self.ssh_path=os.path.join(os.path.abspath(os.path.dirname(__file__)), "ssh")
         self.host_key=os.path.join(self.ssh_path, "TESTING_ONLY_host_rsa")
         self.client_keys=[
-            {"keyfile": "TESTING_ONLY_client_rsa", "valid": True, "userid": 74},
-            {"keyfile": "TESTING_ONLY_client_rsa_2", "valid": True, "userid": 96},
-            {"keyfile": "TESTING_ONLY_client_rsa_invalid", "valid": False, "userid": 0},
+            {"keyfile": "TESTING_ONLY_client_rsa", "valid": True},
+            {"keyfile": "TESTING_ONLY_client_rsa_2", "valid": True},
+            {"keyfile": "TESTING_ONLY_client_rsa_invalid", "valid": False},
         ]
         self.sshd_config=os.path.join(self.ssh_path, "sshd_config")
         #find a port on this machine that is not in use for the sshd
@@ -47,16 +67,23 @@ class TestShell(unittest.TestCase):
         self.ssh_home_dir=os.path.join(self.temp_dir, "ssh_temp_home", getpass.getuser())
         self.ssh_authorized_keys=os.path.join(self.ssh_home_dir, ".ssh", "authorized_keys")
         os.makedirs(os.path.join(self.ssh_home_dir, ".ssh"))
+        
         #generate authorized_keys file
-        gitasticshell=os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic", "gitastic-shell")
+        gitasticshell=os.path.join(os.path.dirname(os.path.abspath(os.path.dirname(__file__))), "gitastic", "gitastic-shell")
         with open(self.ssh_authorized_keys, "w") as fp_auth:
-            for kinfo in self.client_keys:
+            for i, kinfo in enumerate(self.client_keys):
                 if not kinfo["valid"]:
                     continue
                 with open(os.path.join(self.ssh_path, kinfo["keyfile"]+".pub"), "r") as fp_key:
                     keydata=fp_key.readline()
+                    #To get a valid key ID we need to add it to the db
+                    u=database.User(username=u"%s_%d"%(keydata.split().pop(), i), email=u"user@example.com", password=u".")
+                    k=database.UserSSHKey(user=u, name=unicode(keydata.split().pop()), key=unicode(keydata))
+                    database.getStore().add(u)
+                    database.getStore().add(k)
+                    database.getStore().commit()
                     fp_auth.write("command=\"%s %d\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty %s\n"%(
-                        gitasticshell, kinfo["userid"], keydata))
+                        gitasticshell, k.user_ssh_key_id, keydata))
         subprocess.check_call(["/bin/chmod", "0600", self.ssh_authorized_keys])
         #later we set this path as $HOME
 
@@ -79,7 +106,8 @@ class TestShell(unittest.TestCase):
             "GIT_SSH": os.path.join(self.ssh_path, "git_ssh_wrapper.sh"),
             "SSH_KNOWN_HOSTS": self.known_hosts_file,
             "SSH_PORT": str(self.sshd_port),
-            "HOME": self.ssh_home_dir
+            "HOME": self.ssh_home_dir,
+            "SSH_VERBOSE": "-v -v -v" if self.ssh_debug else ""
         }
 
         #start up the sshd
@@ -104,12 +132,13 @@ class TestShell(unittest.TestCase):
                 fp.write("\n")
 
     def tearDown(self):
+        self._drop_tables()
         self._stop_sshd.set()
         self._sshd_thread.join()
         shutil.rmtree(self.temp_dir)
 
     def _run_sshd(self):
-        sshd_proc=subprocess.Popen([self.sshd, "-D", "-q", "-h", self.host_key, "-f", self.sshd_config, "-p", str(self.sshd_port),
+        sshd_proc=subprocess.Popen([self.sshd, "-D", ("-e" if self.ssh_debug else "-q"), "-h", self.host_key, "-f", self.sshd_config, "-p", str(self.sshd_port),
             "-o", "AuthorizedKeysFile=%s"%(self.ssh_authorized_keys,), "-o", "StrictModes=no"], stdout=sys.stderr, stderr=sys.stderr, env=self.shell_env)
         pid=sshd_proc.pid
         self._stop_sshd.wait()
@@ -157,7 +186,7 @@ class TestShell(unittest.TestCase):
             with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
                 self.assertEqual(fp.read().strip(), previous_test_string)
             with open(os.path.join(self.repo_clone_dir, "test.txt"), "w") as fp:
-                previous_test_string="testing_key_%s"%(str(kinfo['userid']),)
+                previous_test_string="testing_key_%s"%(str(kinfo['keyfile']),)
                 fp.write(previous_test_string)
             current_dir=os.getcwd()
             os.chdir(self.repo_clone_dir)
