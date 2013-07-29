@@ -25,7 +25,7 @@ class TestShell(unittest.TestCase):
 
     def setUp(self):
         #Set this to True for extra SSH debugging
-        self.ssh_debug=True
+        self.ssh_debug=False
 
         #init the database
         self._drop_tables()
@@ -82,8 +82,8 @@ class TestShell(unittest.TestCase):
                     database.getStore().add(u)
                     database.getStore().add(k)
                     database.getStore().commit()
-                    fp_auth.write("command=\"%s %d\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty %s\n"%(
-                        gitasticshell, k.user_ssh_key_id, keydata))
+                    fp_auth.write("command=\"%s %d %s\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty %s\n"%(
+                        gitasticshell, k.user_ssh_key_id, os.path.join(os.path.abspath(os.path.dirname(__file__)), "config"), keydata))
         subprocess.check_call(["/bin/chmod", "0600", self.ssh_authorized_keys])
         #later we set this path as $HOME
 

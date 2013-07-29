@@ -1,14 +1,28 @@
 #!/usr/bin/python
 import sys, os, subprocess
+from storm.exceptions import NotOneError
 from lib.shellutils import die
+from lib import gitastic, database
+
+if len(sys.argv)==3:
+    #An optional config parameter allows loading the config from somewhere else
+    #This is necessary for unit testing. DO NOT USE IN PRODUCTION PLEASE
+    gitastic.configDir=sys.argv.pop()
+
+gitastic.init()
 
 try:
-    program, userid=sys.argv
+    program, keyid=sys.argv
     command=os.environ["SSH_ORIGINAL_COMMAND"]
+    key=database.getStore().find(database.UserSSHKey, database.UserSSHKey.user_ssh_key_id==int(keyid)).one()
+    if not key:
+        raise NotOneError
 except ValueError:
-    die("Need a userid")
+    die("Need a keyid")
 except KeyError:
     die("No SSH_ORIGINAL_COMMAND present")
+except NotOneError:
+    die("Your SSH key is not recognized")
 
 actions=("git-receive-pack", "git-upload-pack")
 if command.split()[0] not in actions:
