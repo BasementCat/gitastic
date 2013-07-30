@@ -78,3 +78,5 @@ class UserSSHKey(Model):
         typeStrLen=struct.unpack(">I", keyData[:4])[0]
         typeStr=keyData[4:4+typeStrLen]
         return typeStr==keyType
+
+User.keys=ReferenceSet(User.user_id, UserSSHKey.user_id)

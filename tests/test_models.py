@@ -77,5 +77,17 @@ class TestUserSSHKeyModel(_ModelTestBase):
             with open(keyfile, "r") as fp:
                 self.assertFalse(database.UserSSHKey.validateKey(fp.read()))
 
+    def test_user_keys(self):
+        u=database.User(username=u"user", password=u"", email=u"")
+        for keyfile in self.pubkeys:
+            with open(keyfile, "r") as fp:
+                u.keys.add(database.UserSSHKey(name=unicode(keyfile), key=unicode(fp.read())))
+        database.getStore().add(u)
+        database.getStore().commit()
+        del u
+        u=database.getStore().find(database.User).one()
+        self.assertIsNotNone(u)
+        self.assertEqual(u.keys.count(), len(self.pubkeys))
+
 if __name__ == '__main__':
     unittest.main()
