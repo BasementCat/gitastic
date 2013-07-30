@@ -31,5 +31,14 @@ schema={
 		ON DELETE CASCADE
 		ON UPDATE CASCADE)
 		ENGINE = InnoDB;""",
-
+	3: """
+		CREATE  TABLE `repository` (
+		`repository_id` BIGINT NOT NULL AUTO_INCREMENT ,
+		`name` VARCHAR(128) NOT NULL ,
+		`description` TEXT NOT NULL ,
+		`owner_user_id` BIGINT NOT NULL ,
+		PRIMARY KEY (`repository_id`) ,
+		UNIQUE INDEX `name_UNIQUE` (`name` ASC) )
+		ENGINE = InnoDB
+		COMMENT = 'owner_user_id should be fk to user.user_id';""",
 }
