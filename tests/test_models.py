@@ -11,8 +11,10 @@ gitastic.init()
 
 class _ModelTestBase(unittest.TestCase):
     def _drop_tables(self):
+        database.getStore().execute("SET FOREIGN_KEY_CHECKS = 0;")
         for table in database.getStore().execute("show tables;"):
             database.getStore().execute("drop table %s;"%(table[0],))
+        database.getStore().execute("SET FOREIGN_KEY_CHECKS = 1;")
 
     def setUp(self):
         self._drop_tables()
