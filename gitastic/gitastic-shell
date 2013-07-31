@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import sys, os, subprocess
+import sys, os, subprocess, shlex
 from storm.exceptions import NotOneError
 from lib.shellutils import die
 from lib import gitastic, database
@@ -13,7 +13,7 @@ gitastic.init()
 
 try:
     program, keyid=sys.argv
-    command=os.environ["SSH_ORIGINAL_COMMAND"]
+    command=shlex.split(os.environ["SSH_ORIGINAL_COMMAND"])
     key=database.getStore().find(database.UserSSHKey, database.UserSSHKey.user_ssh_key_id==int(keyid)).one()
     if not key:
         raise NotOneError
@@ -25,10 +25,13 @@ except NotOneError:
     die("Your SSH key is not recognized")
 
 actions=("git-receive-pack", "git-upload-pack")
-if command.split()[0] not in actions:
-    die("Command must be one of %s (%s was given)", ", ".join(actions), command.split()[0])
+if command[0] not in actions:
+    die("Command must be one of %s (%s was given)", ", ".join(actions), command[0])
+
+# try:
+#     repo=database.getStore().find(database.Repository.findByPath(
 
 # abort "read denied for #{user}" unless permissions =~ /r/
 # abort "write denied for #{user}" if action == 'git-receive-pack' and permissions !~ /w/
 
-subprocess.call([gitastic.config.get("Repository/Git", do_except=True), "shell", "-c", command])
+subprocess.call([gitastic.config.get("Repository/Git", do_except=True), "shell", "-c", " ".join(command[:-1]+["'"+command[-1]+"'"])])
