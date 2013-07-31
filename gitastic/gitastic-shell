@@ -31,5 +31,4 @@ if command.split()[0] not in actions:
 # abort "read denied for #{user}" unless permissions =~ /r/
 # abort "write denied for #{user}" if action == 'git-receive-pack' and permissions !~ /w/
 
-# git=subprocess.check_output("which git", shell=True)
-subprocess.call(["/usr/bin/git", "shell", "-c", command])
+subprocess.call([gitastic.config.get("Repository/Git", do_except=True), "shell", "-c", command])
