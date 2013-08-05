@@ -10,6 +10,8 @@ import shutil
 import copy
 import getpass
 import signal
+import yaml
+from storm.tracer import debug as storm_query_debug
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic"))
 from lib import gitastic, database
@@ -17,6 +19,16 @@ gitastic.configDir=os.path.join(os.path.dirname(__file__), "config")
 gitastic.init()
 
 class TestShell(unittest.TestCase):
+    #Set this to True for extra SSH debugging
+    ssh_debug=False
+    #Set this to True for query debugging
+    query_debug=False
+
+    def __init__(self, *args, **kwargs):
+        if self.query_debug:
+            storm_query_debug(True, stream=sys.stderr)
+        super(TestShell, self).__init__(*args, **kwargs)
+
     def _drop_tables(self):
         database.getStore().execute("SET FOREIGN_KEY_CHECKS = 0;")
         for table in database.getStore().execute("show tables;"):
@@ -24,9 +36,6 @@ class TestShell(unittest.TestCase):
         database.getStore().execute("SET FOREIGN_KEY_CHECKS = 1;")
 
     def setUp(self):
-        #Set this to True for extra SSH debugging
-        self.ssh_debug=False
-
         #init the database
         self._drop_tables()
         subprocess.call([os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), "gitastic", "update-db")),
@@ -58,17 +67,28 @@ class TestShell(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.host_key+".pub"), "Missing host pubkey at %s"%(self.host_key+".pub",))
         self.assertIsNotNone(self.sshd_port, "Could not find suitable port to start SSHD on")
 
-        #set up authorized_keys so sshd will let users log in
-        #also fix permissions for ssh dirs
+        #Set up a temp dir to hold everything (makes for easy cleanup)
         self.temp_dir=tempfile.mkdtemp()
+
+        #Write out an alternate configuration
+        self.config_dir=os.path.join(self.temp_dir, "config")
+        os.makedirs(self.config_dir)
+        subprocess.check_call("cp -rf %s/* %s/"%(os.path.join(os.path.dirname(__file__), "config"), self.config_dir), shell=True)
+        with open(os.path.join(self.config_dir, "testing_config.yml"), "w") as fp:
+            fp.write(yaml.dump({"Repository": {"BaseDirectory": self.temp_dir}}))
+        gitastic.config.load(os.path.join(self.config_dir, "testing_config.yml"))
+        
+        #fix permissions for ssh dirs
         subprocess.check_call(["/bin/chown", "-R", getpass.getuser(), self.temp_dir])
         subprocess.check_call(["/bin/chmod", "-R", "0700", self.temp_dir])
 
+        #set up authorized_keys so sshd will let users log in
         self.ssh_home_dir=os.path.join(self.temp_dir, "ssh_temp_home", getpass.getuser())
         self.ssh_authorized_keys=os.path.join(self.ssh_home_dir, ".ssh", "authorized_keys")
         os.makedirs(os.path.join(self.ssh_home_dir, ".ssh"))
         
         #generate authorized_keys file
+        self.keyfile_map={}
         gitasticshell=os.path.join(os.path.dirname(os.path.abspath(os.path.dirname(__file__))), "gitastic", "gitastic-shell")
         with open(self.ssh_authorized_keys, "w") as fp_auth:
             for i, kinfo in enumerate(self.client_keys):
@@ -82,8 +102,9 @@ class TestShell(unittest.TestCase):
                     database.getStore().add(u)
                     database.getStore().add(k)
                     database.getStore().commit()
+                    self.keyfile_map[k.user_ssh_key_id]=os.path.join(self.ssh_path, kinfo["keyfile"])
                     fp_auth.write("command=\"%s %d %s\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty %s\n"%(
-                        gitasticshell, k.user_ssh_key_id, os.path.join(os.path.abspath(os.path.dirname(__file__)), "config"), keydata))
+                        gitasticshell, k.user_ssh_key_id, self.config_dir, keydata))
         subprocess.check_call(["/bin/chmod", "0600", self.ssh_authorized_keys])
         #later we set this path as $HOME
 
@@ -91,14 +112,17 @@ class TestShell(unittest.TestCase):
         self.known_hosts_file=os.path.join(self.temp_dir, "ssh_known_hosts")
 
         #init a git repo to clone
-        self.repo_dir=os.path.join(self.temp_dir, "gitsrc")
-        self.repo_init_dir=os.path.join(self.temp_dir, "gitinit")
         self.repo_clone_dir=os.path.join(self.temp_dir, "gitclone")
-        os.mkdir(self.repo_dir)
-        os.mkdir(self.repo_init_dir)
         #don't create the dir into which we clone or git will bail
-        subprocess.check_call("git init --bare %s; cd %s; git init; echo \"test\" >test.txt; git add test.txt; git commit -am \".\"; git remote add origin %s; git push -u origin master;"%(
-            self.repo_dir, self.repo_init_dir, self.repo_dir), shell=True)
+        self.assertFalse(os.path.exists(self.repo_clone_dir))
+
+        #we'll create the same repo for each user
+        for u in database.getStore().find(database.User):
+            r=database.Repository(name=u"test_repo", description=u"This is a testing repository")
+            u.repositories.add(r)
+            r.setPath()
+            r.create(add_readme=True)
+        database.getStore().commit()
 
         #setup the environment for commands to be run
         self.shell_env={
@@ -159,66 +183,92 @@ class TestShell(unittest.TestCase):
         return proc.wait()
 
     def test_clone(self):
-        for kinfo in self.client_keys:
-            if not kinfo["valid"]:
-                continue
-            keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
-            self.assertEqual(
-                self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
-                0
-                )
-            self.assertTrue(os.path.exists(os.path.join(self.repo_clone_dir, "test.txt")))
-            with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
-                self.assertEqual(fp.read().strip(), "test")
-            shutil.rmtree(self.repo_clone_dir)
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        for u in users:
+            self.assertGreater(u.keys.count(), 0)
+            self.assertGreater(u.repositories.count(), 0)
+            key=None
+            for _key in u.keys:
+                key=_key
+                break
+            keyfile=self.keyfile_map[key.user_ssh_key_id]
+            for r in u.repositories:
+                clonedir="%s_%d"%(self.repo_clone_dir, r.repository_id)
+                self.assertEqual(
+                    self._shell("git clone %s %s"%(r.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+                    0
+                    )
+                readme=os.path.join(clonedir, "README.md")
+                self.assertTrue(os.path.exists(os.path.dirname(readme)))
+                self.assertTrue(os.path.exists(readme))
+                with open(readme, "r") as fp:
+                    self.assertEqual(fp.read(), "# %s\n\n%s\n"%(r.name, r.description))
+                shutil.rmtree(clonedir)
 
     def test_push(self):
-        previous_test_string="test"
-        for kinfo in self.client_keys:
-            if not kinfo["valid"]:
-                continue
-            keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
-            self.assertEqual(
-                self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
-                0
-                )
-            self.assertTrue(os.path.exists(os.path.join(self.repo_clone_dir, "test.txt")))
-            with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
-                self.assertEqual(fp.read().strip(), previous_test_string)
-            with open(os.path.join(self.repo_clone_dir, "test.txt"), "w") as fp:
-                previous_test_string="testing_key_%s"%(str(kinfo['keyfile']),)
-                fp.write(previous_test_string)
-            current_dir=os.getcwd()
-            os.chdir(self.repo_clone_dir)
-            self.assertEqual(
-                self._shell("git commit -am 'test'"),
-                0
-                )
-            self.assertEqual(
-                self._shell("git push --all", env={"GIT_SSH_KEY": keyfile}),
-                0
-                )
-            os.chdir(current_dir)
-            shutil.rmtree(self.repo_clone_dir)
-            self.assertEqual(
-                self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
-                0
-                )
-            self.assertTrue(os.path.exists(os.path.join(self.repo_clone_dir, "test.txt")))
-            with open(os.path.join(self.repo_clone_dir, "test.txt"), "r") as fp:
-                self.assertEqual(fp.read().strip(), previous_test_string)
-            shutil.rmtree(self.repo_clone_dir)
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        for u in users:
+            self.assertGreater(u.keys.count(), 0)
+            self.assertGreater(u.repositories.count(), 0)
+            key=None
+            for _key in u.keys:
+                key=_key
+                break
+            keyfile=self.keyfile_map[key.user_ssh_key_id]
+            for r in u.repositories:
+                clonedir="%s_%d"%(self.repo_clone_dir, r.repository_id)
+
+                #clone the repo
+                self.assertEqual(
+                    self._shell("git clone %s %s"%(r.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+                    0
+                    )
+                readme=os.path.join(clonedir, "README.md")
+                self.assertTrue(os.path.exists(os.path.dirname(readme)))
+                self.assertTrue(os.path.exists(readme))
+                with open(readme, "r") as fp:
+                    self.assertEqual(fp.read(), "# %s\n\n%s\n"%(r.name, r.description))
+
+                #make, commit, and push changes
+                with open(readme, "a") as fp:
+                    fp.write("%s\n"%(r.name,))
+                curdir=os.getcwd()
+                os.chdir(clonedir)
+                self.assertEqual(self._shell("git commit -am \"Test commit\""), 0)
+                self.assertEqual(self._shell("git push --all", env={"GIT_SSH_KEY": keyfile}), 0)
+                os.chdir(curdir)
+
+                #Remove all traces, re-clone and verify
+                shutil.rmtree(clonedir)
+                self.assertEqual(
+                    self._shell("git clone %s %s"%(r.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+                    0
+                    )
+                readme=os.path.join(clonedir, "README.md")
+                self.assertTrue(os.path.exists(os.path.dirname(readme)))
+                self.assertTrue(os.path.exists(readme))
+                with open(readme, "r") as fp:
+                    self.assertEqual(fp.read(), "# %s\n\n%s\n%s\n"%(r.name, r.description, r.name))
+                shutil.rmtree(clonedir)
 
     def test_clone_invalid_key(self):
-        for kinfo in self.client_keys:
-            if kinfo["valid"]:
-                continue
-            keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
-            self.assertEqual(
-                self._shell("git clone $(whoami)@127.0.0.1:%s %s"%(self.repo_dir, self.repo_clone_dir), env={"GIT_SSH_KEY": keyfile}),
-                128
-                )
-            self.assertFalse(os.path.exists(self.repo_clone_dir))
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        for u in users:
+            self.assertGreater(u.repositories.count(), 0)
+            for r in u.repositories:
+                for kinfo in self.client_keys:
+                    if kinfo["valid"]:
+                        continue
+                    keyfile=os.path.join(self.ssh_path, kinfo["keyfile"])
+                    clonedir="%s_%d"%(self.repo_clone_dir, r.repository_id)
+                    self.assertEqual(
+                        self._shell("git clone %s %s"%(r.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+                        128
+                        )
+                    self.assertFalse(os.path.exists(clonedir))
 
 if __name__ == '__main__':
     unittest.main()

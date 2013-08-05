@@ -5,8 +5,10 @@ import struct
 import tempfile
 import shutil
 import os
+import pwd
 import subprocess
 from storm.locals import *
+from storm.exceptions import NotOneError
 import bcrypt
 import gitastic
 
@@ -30,7 +32,8 @@ def getStore():
 
 def connect():
     global database
-    database=create_database(gitastic.config.get("DatabaseURI", do_except=True))
+    if database is None:
+        database=create_database(gitastic.config.get("DatabaseURI", do_except=True))
 
 class Model(object):
     def __init__(self, **kwargs):
@@ -92,12 +95,32 @@ class UserSSHKey(Model):
 User.keys=ReferenceSet(User.user_id, UserSSHKey.user_id)
 
 class Repository(Model):
+    ACC_OWNER=8
+    ACC_ADMIN=4
+    ACC_PUSH=2
+    ACC_VIEW=1
+    ACC_NONE=0
+
     __storm_table__="repository"
     repository_id=Int(primary=True)
     name=Unicode(default=u"")
+    path=Unicode(default=u"")
     description=Unicode(default=u"")
+    public=Bool(default=True)
     owner_user_id=Int()
     owner_user=Reference(owner_user_id, User.user_id)
+
+    def setPath(self):
+        self.path=unicode(u"/".join((self.getOwnerName(), self.name)))
+
+    @classmethod
+    def findByPath(self, path):
+        repo=None
+        try:
+            repo=getStore().find(self, self.path==unicode(path[:-4] if path.endswith(".git") else path)).one()
+        except NotOneError:
+            pass
+        return repo
 
     def getOwner(self):
         return self.owner_user
@@ -108,9 +131,28 @@ class Repository(Model):
             return owner.username
         raise RepositoryError("The owner of repository %s #%d does not exist"%(self.name, self.repository_id))
 
+    def getAccess(self, other_user):
+        owner=self.getOwner()
+        if isinstance(owner, User) and owner==other_user:
+            return self.ACC_OWNER
+        elif self.public:
+            return self.ACC_VIEW
+        else:
+            return self.ACC_NONE
+
     def getRepositoryDir(self):
         repobase=gitastic.config.get("Repository/BaseDirectory", do_except=True)
         return os.path.join(repobase, self.getOwnerName(), self.name+".git")
+
+    def getRepositoryCloneURI(self, proto="ssh"):
+        if proto=="ssh":
+            return "%s@%s:%s/%s.git"%(
+                pwd.getpwuid(os.getuid())[0],
+                gitastic.getWebHost(),
+                self.getOwnerName(),
+                self.name)
+        else:
+            raise RepositoryError("Invalid clone protocol: %s"%(proto,))
 
     def create(self, add_readme=False):
         repodir=self.getRepositoryDir()

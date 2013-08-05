@@ -41,4 +41,9 @@ schema={
 		UNIQUE INDEX `name_UNIQUE` (`name` ASC) )
 		ENGINE = InnoDB
 		COMMENT = 'owner_user_id should be fk to user.user_id';""",
+	4: """ALTER TABLE `repository` ADD COLUMN `public` TINYINT(1) NOT NULL DEFAULT 1  AFTER `description` ;""",
+	5: """
+		ALTER TABLE `repository` ADD COLUMN `path` VARCHAR(128) NOT NULL  AFTER `name` 
+		, ADD UNIQUE INDEX `path_UNIQUE` (`path` ASC) ;""",
+	6: """ALTER TABLE `repository` DROP INDEX `name_UNIQUE` ;""",
 }

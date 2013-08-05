@@ -112,13 +112,16 @@ class TestRepositoryModel(_ModelTestBase):
     def test_create_repo(self):
         repo=database.Repository(name=u"test-repo", description=u"Testing Repo")
         self.repouser.repositories.add(repo)
+        repo.setPath()
         database.getStore().commit()
         repo.create()
         self.assertTrue(os.path.exists(repo.getRepositoryDir()))
+        self.assertEqual(repo.path, unicode(u"/".join((repo.getOwnerName(), repo.name))))
 
     def test_create_repo_readme(self):
         repo=database.Repository(name=u"test-repo", description=u"Testing Repo")
         self.repouser.repositories.add(repo)
+        repo.setPath()
         database.getStore().commit()
         repo.create(add_readme=True)
         self.assertTrue(os.path.exists(repo.getRepositoryDir()))
@@ -137,14 +140,17 @@ class TestRepositoryModel(_ModelTestBase):
     def test_create_duplicate(self):
         repo1=database.Repository(name=u"test-repo", description=u"Testing Repo")
         self.repouser.repositories.add(repo1)
+        repo1.setPath()
         database.getStore().commit()
         repo1.create()
         with self.assertRaises(IntegrityError):
             repo2=database.Repository(name=u"test-repo", description=u"Testing Repo")
             self.repouser.repositories.add(repo2)
+            repo2.setPath()
             database.getStore().commit()
         repo3=database.Repository(name=u"test-repo3", description=u"Testing Repo")
         self.repouser.repositories.add(repo3)
+        repo3.setPath()
         os.makedirs(repo3.getRepositoryDir())
         with self.assertRaises(database.RepositoryError):
             repo3.create()

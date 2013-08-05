@@ -4,3 +4,5 @@ User:
 Repository:
     Git: /usr/bin/git
     BaseDirectory: /home/git/repositories
+Web:
+    FallbackHost: localhost
