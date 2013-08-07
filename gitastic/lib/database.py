@@ -7,6 +7,7 @@ import shutil
 import os
 import pwd
 import subprocess
+import re
 from storm.locals import *
 from storm.exceptions import NotOneError
 import bcrypt
@@ -46,7 +47,16 @@ class ModelError(Exception):
 class RepositoryError(ModelError):
     pass
 
-class User(Model):
+class ValidationError(ModelError):
+    pass
+
+class FilesystemPathValidationMixin(object):
+    @classmethod
+    def _validateFilesystemPathComponent(self, value, message=None):
+        if not re.match(ur"^[\w\d_-]+$", value):
+            raise ValidationError(message or "validation failed")
+
+class User(Model, FilesystemPathValidationMixin):
     __storm_table__="user"
     user_id=Int(primary=True)
     username=Unicode(default=u"")
@@ -67,6 +77,10 @@ class User(Model):
         except NotOneError:
             return None
         return user if user and user.checkPassword(password) else None
+
+    @classmethod
+    def validateUsername(self, otherUsername):
+        self._validateFilesystemPathComponent(value=otherUsername, message="Your desired username contains invalid characters")
 
 class UserSSHKey(Model):
     __storm_table__="user_ssh_key"
@@ -94,7 +108,7 @@ class UserSSHKey(Model):
 
 User.keys=ReferenceSet(User.user_id, UserSSHKey.user_id)
 
-class Repository(Model):
+class Repository(Model, FilesystemPathValidationMixin):
     ACC_OWNER=8
     ACC_ADMIN=4
     ACC_PUSH=2
@@ -109,6 +123,10 @@ class Repository(Model):
     public=Bool(default=True)
     owner_user_id=Int()
     owner_user=Reference(owner_user_id, User.user_id)
+
+    @classmethod
+    def validateName(self, otherName):
+        self._validateFilesystemPathComponent(value=otherName, message="Your desired repository name contains invalid characters")
 
     def setPath(self):
         self.path=unicode(u"/".join((self.getOwnerName(), self.name)))

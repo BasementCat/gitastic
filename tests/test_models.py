@@ -56,6 +56,13 @@ class TestUserModel(_ModelTestBase):
         password2=u.password
         self.assertNotEqual(password1, password2)
 
+    def test_username_invalidchars(self):
+        with self.assertRaises(database.ValidationError):
+            database.User.validateUsername(u"this has$invalid*chars!")
+
+    def test_username_validchars(self):
+        database.User.validateUsername(u"this_has-invalid_chars")
+
 class TestUserSSHKeyModel(_ModelTestBase):
     def setUp(self):
         super(TestUserSSHKeyModel, self).setUp()
@@ -155,6 +162,13 @@ class TestRepositoryModel(_ModelTestBase):
         with self.assertRaises(database.RepositoryError):
             repo3.create()
         database.getStore().rollback()
+
+    def test_name_invalidchars(self):
+        with self.assertRaises(database.ValidationError):
+            database.Repository.validateName(u"this has$invalid*chars!")
+
+    def test_name_validchars(self):
+        database.Repository.validateName(u"this_has-invalid_chars")
 
 if __name__ == '__main__':
     unittest.main()
