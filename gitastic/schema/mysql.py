@@ -46,4 +46,8 @@ schema={
 		ALTER TABLE `repository` ADD COLUMN `path` VARCHAR(128) NOT NULL  AFTER `name` 
 		, ADD UNIQUE INDEX `path_UNIQUE` (`path` ASC) ;""",
 	6: """ALTER TABLE `repository` DROP INDEX `name_UNIQUE` ;""",
+	7: """
+		ALTER TABLE `repository`
+		DROP INDEX `path_UNIQUE`
+		, ADD UNIQUE INDEX `path_UNIQUE` (`name` ASC, `owner_user_id` ASC) ;"""
 }
