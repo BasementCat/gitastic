@@ -165,17 +165,19 @@ class Repository(Model, FilesystemPathValidationMixin):
         else:
             return self.ACC_NONE
 
+    def _getRepositoryShortPath(self):
+        return os.path.join(self.getOwnerName(), self.name+".git")
+
     def getRepositoryDir(self):
         repobase=gitastic.config.get("Repository/BaseDirectory", do_except=True)
-        return os.path.join(repobase, self.getOwnerName(), self.name+".git")
+        return os.path.join(repobase, self._getRepositoryShortPath())
 
     def getRepositoryCloneURI(self, proto="ssh"):
         if proto=="ssh":
-            return "%s@%s:%s/%s.git"%(
+            return "%s@%s:%s"%(
                 pwd.getpwuid(os.getuid())[0],
                 gitastic.getWebHost(),
-                self.getOwnerName(),
-                self.name)
+                self._getRepositoryShortPath())
         else:
             raise RepositoryError("Invalid clone protocol: %s"%(proto,))
 
