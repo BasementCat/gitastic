@@ -8,6 +8,7 @@ import os
 import pwd
 import subprocess
 import re
+from datetime import datetime
 from storm.locals import *
 from storm.exceptions import NotOneError
 import bcrypt
@@ -89,6 +90,12 @@ class UserSSHKey(Model):
     user=Reference(user_id, User.user_id)
     name=Unicode()
     key=Unicode()
+    timestamp=DateTime()
+    added_from_ip=Unicode(default=u"0.0.0.0")
+
+    def __init__(self, **kwargs):
+        self.timestamp=datetime.utcnow()
+        super(UserSSHKey, self).__init__(**kwargs)
 
     @staticmethod
     def validateKey(keystr):

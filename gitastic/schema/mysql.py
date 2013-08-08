@@ -49,5 +49,9 @@ schema={
 	7: """
 		ALTER TABLE `repository`
 		DROP INDEX `path_UNIQUE`
-		, ADD UNIQUE INDEX `path_UNIQUE` (`name` ASC, `owner_user_id` ASC) ;"""
+		, ADD UNIQUE INDEX `path_UNIQUE` (`name` ASC, `owner_user_id` ASC) ;""",
+	8: """
+		ALTER TABLE `user_ssh_key`
+			ADD COLUMN `timestamp` DATETIME NOT NULL  AFTER `key` ,
+			ADD COLUMN `added_from_ip` VARCHAR(64) NOT NULL DEFAULT '0.0.0.0'  AFTER `timestamp` ;""",
 }
