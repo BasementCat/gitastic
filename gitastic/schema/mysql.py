@@ -54,4 +54,23 @@ schema={
 		ALTER TABLE `user_ssh_key`
 			ADD COLUMN `timestamp` DATETIME NOT NULL  AFTER `key` ,
 			ADD COLUMN `added_from_ip` VARCHAR(64) NOT NULL DEFAULT '0.0.0.0'  AFTER `timestamp` ;""",
+	9: """
+		CREATE  TABLE `repository_access` (
+		`repository_id` BIGINT NOT NULL ,
+		`user_id` BIGINT NOT NULL ,
+		`access` INT NOT NULL DEFAULT 0 ,
+		PRIMARY KEY (`repository_id`, `user_id`) ,
+		INDEX `fk_repository_access_repo` (`repository_id` ASC) ,
+		INDEX `fk_repository_access_user` (`user_id` ASC) ,
+		CONSTRAINT `fk_repository_access_repo`
+		FOREIGN KEY (`repository_id` )
+		REFERENCES `repository` (`repository_id` )
+		ON DELETE CASCADE
+		ON UPDATE CASCADE,
+		CONSTRAINT `fk_repository_access_user`
+		FOREIGN KEY (`user_id` )
+		REFERENCES `user` (`user_id` )
+		ON DELETE CASCADE
+		ON UPDATE CASCADE)
+		ENGINE = InnoDB;""",
 }

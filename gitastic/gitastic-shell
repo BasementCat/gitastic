@@ -32,7 +32,14 @@ repo=database.Repository.findByPath(command[-1])
 if not repo:
     die("Repository does not exist: %s", command[-1])
 
-# abort "read denied for #{user}" unless permissions =~ /r/
-# abort "write denied for #{user}" if action == 'git-receive-pack' and permissions !~ /w/
+if not repo.getAccess(key.user)&repo.PERM_CLONE:
+    if not repo.public:
+        #This is the more common scenario, if a repo is public you should be able to clone
+        die("Repository does not exist: %s", command[-1])
+    else:
+        die("You do not have permission to clone this repository")
+
+if command[0]=="git-receive-pack" and not repo.getAccess(key.user)&repo.PERM_PUSH:
+    die("You do not have permission to push to this repository")
 
 subprocess.call([gitastic.config.get("Repository/Git", do_except=True), "shell", "-c", " ".join(command[:-1]+["'"+repo.getRepositoryDir()+"'"])])

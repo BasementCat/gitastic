@@ -10,6 +10,7 @@ import subprocess
 import re
 from datetime import datetime
 from storm.locals import *
+from storm.expr import *
 from storm.exceptions import NotOneError
 import bcrypt
 import gitastic
@@ -122,6 +123,11 @@ class Repository(Model, FilesystemPathValidationMixin):
     ACC_VIEW=1
     ACC_NONE=0
 
+    PERM_ADMIN=ACC_OWNER|ACC_ADMIN
+    PERM_PUSH=PERM_ADMIN|ACC_PUSH
+    PERM_CLONE=PERM_PUSH|ACC_VIEW
+    PERM_VIEW=PERM_CLONE
+
     __storm_table__="repository"
     repository_id=Int(primary=True)
     name=Unicode(default=u"")
@@ -156,14 +162,34 @@ class Repository(Model, FilesystemPathValidationMixin):
             return owner.username
         raise RepositoryError("The owner of repository %s #%d does not exist"%(self.name, self.repository_id))
 
+    def _getAccess(self, other_user):
+        acc=None
+        try:
+            acc=getStore().find(RepositoryAccess, And(RepositoryAccess.repository==self, RepositoryAccess.user==other_user)).one()
+        except NotOneError:
+            return self.ACC_NONE
+        return acc.access if acc else self.ACC_NONE
+
     def getAccess(self, other_user):
         owner=self.getOwner()
-        if isinstance(owner, User) and owner==other_user:
-            return self.ACC_OWNER
-        elif self.public:
-            return self.ACC_VIEW
+        access=self._getAccess(other_user)
+        return max(
+            self.ACC_OWNER if isinstance(owner, User) and owner==other_user else self.ACC_NONE,
+            access,
+            self.ACC_VIEW if self.public else self.ACC_NONE,
+            self.ACC_NONE
+        )
+
+    def setAccess(self, other_user, access):
+        if access==self.ACC_OWNER:
+            raise RepositoryError("Owner access must be set by changing the repository owner")
+        elif access in (self.ACC_ADMIN, self.ACC_PUSH, self.ACC_VIEW, self.ACC_NONE):
+            getStore().find(RepositoryAccess, And(RepositoryAccess.repository==self, RepositoryAccess.user==other_user)).remove()
+            if access!=self.ACC_NONE:
+                getStore().add(RepositoryAccess(repository=self, user=other_user, access=access))
+            getStore().commit()
         else:
-            return self.ACC_NONE
+            raise RepositoryError("Access must be a valid access level")
 
     def _getRepositoryShortPath(self):
         return os.path.join(self.getOwnerName(), self.name+".git")
@@ -218,3 +244,12 @@ class Repository(Model, FilesystemPathValidationMixin):
                 shutil.rmtree(temp)
 
 User.repositories=ReferenceSet(User.user_id, Repository.owner_user_id)
+
+class RepositoryAccess(Model):
+    __storm_table__="repository_access"
+    __storm_primary__=("repository_id", "user_id")
+    repository_id=Int()
+    repository=Reference(repository_id, Repository.repository_id)
+    user_id=Int()
+    user=Reference(user_id, User.user_id)
+    access=Int()

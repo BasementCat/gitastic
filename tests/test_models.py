@@ -170,5 +170,69 @@ class TestRepositoryModel(_ModelTestBase):
     def test_name_validchars(self):
         database.Repository.validateName(u"this_has-invalid_chars")
 
+class TestRepositoryAccessModel(_ModelTestBase):
+    def setUp(self):
+        super(TestRepositoryAccessModel, self).setUp()
+        self.repo_owner=database.User(username=u"Tester", email=u"tester@example.com", password=u"")
+        self.repo_user=database.User(username=u"Tester2", email=u"tester2@example.com", password=u"")
+        self.repo=database.Repository(name=u"test-repo", description=u"Testing repo", public=False)
+        self.repo_owner.repositories.add(self.repo)
+        database.getStore().add(self.repo_owner)
+        database.getStore().add(self.repo_user)
+        database.getStore().add(self.repo)
+        database.getStore().commit()
+
+    def test_ACC_OWNER(self):
+        self.assertEqual(self.repo.getAccess(self.repo_owner), database.Repository.ACC_OWNER)
+        self.assertTrue(self.repo.getAccess(self.repo_owner)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_owner)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_owner)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_owner)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_NONE)
+        with self.assertRaises(database.RepositoryError):
+            self.repo.setAccess(self.repo_user, database.Repository.ACC_OWNER)
+
+    def test_ACC_ADMIN(self):
+        self.repo.setAccess(self.repo_user, database.Repository.ACC_ADMIN)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+
+    def test_ACC_PUSH(self):
+        self.repo.setAccess(self.repo_user, database.Repository.ACC_PUSH)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_PUSH)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+
+    def test_ACC_VIEW(self):
+        self.repo.setAccess(self.repo_user, database.Repository.ACC_VIEW)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_VIEW)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+
+    def test_ACC_NONE(self):
+        self.repo.setAccess(self.repo_user, database.Repository.ACC_NONE)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_NONE)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+
+        self.repo.public=True
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+
+    def test_invalid_level(self):
+        with self.assertRaises(database.RepositoryError):
+            self.repo.setAccess(self.repo_user, 173)
+
 if __name__ == '__main__':
     unittest.main()
