@@ -124,6 +124,18 @@ class TestShell(unittest.TestCase):
             r.create(add_readme=True)
         database.getStore().commit()
 
+        #Set up infrastructure for testing team repos
+        self.test_team=database.Team(name=u"Test-team")
+        database.getStore().add(self.test_team)
+        database.getStore().commit()
+        self.test_team_repo=database.Repository(name=u"test_repo", description=u"This is a testing repository")
+        self.test_team.repositories.add(self.test_team_repo)
+        database.getStore().commit()
+        self.test_team_repo.setPath()
+        self.test_team_repo.create(add_readme=True)
+        database.getStore().add(self.test_team_repo)
+        database.getStore().commit()
+
         #setup the environment for commands to be run
         self.shell_env={
             #We change the ssh key frequently so we can't specify it here
@@ -563,6 +575,136 @@ class TestShell(unittest.TestCase):
                 with open(readme, "r") as fp:
                     self.assertEqual(fp.read(), "# %s\n\n%s\n%s\n"%(r.name, r.description, r.name))
                 shutil.rmtree(clonedir)
+
+
+
+    def test_clone_team_public_repo(self):
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        user=None
+        for u in users:
+            user=u
+            break
+        self.assertGreater(user.keys.count(), 0)
+        key=None
+        for _key in user.keys:
+            key=_key
+            break
+        keyfile=self.keyfile_map[key.user_ssh_key_id]
+        clonedir="%s_%d"%(self.repo_clone_dir, self.test_team_repo.repository_id)
+        self.assertEqual(
+            self._shell("git clone %s %s"%(self.test_team_repo.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+            128
+            )
+        # readme=os.path.join(clonedir, "README.md")
+        # self.assertTrue(os.path.exists(os.path.dirname(readme)))
+        # self.assertTrue(os.path.exists(readme))
+        # with open(readme, "r") as fp:
+        #     self.assertEqual(fp.read(), "# %s\n\n%s\n"%(self.test_team_repo.name, self.test_team_repo.description))
+        # shutil.rmtree(clonedir)
+
+    def test_clone_team_private_repo(self):
+        self.test_team_repo.public=False
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        user=None
+        for u in users:
+            user=u
+            break
+        self.assertGreater(user.keys.count(), 0)
+        key=None
+        for _key in user.keys:
+            key=_key
+            break
+        keyfile=self.keyfile_map[key.user_ssh_key_id]
+        clonedir="%s_%d"%(self.repo_clone_dir, self.test_team_repo.repository_id)
+        self.assertEqual(
+            self._shell("git clone %s %s"%(self.test_team_repo.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+            128
+            )
+        # readme=os.path.join(clonedir, "README.md")
+        # self.assertTrue(os.path.exists(os.path.dirname(readme)))
+        # self.assertTrue(os.path.exists(readme))
+        # with open(readme, "r") as fp:
+        #     self.assertEqual(fp.read(), "# %s\n\n%s\n"%(self.test_team_repo.name, self.test_team_repo.description))
+        # shutil.rmtree(clonedir)
+
+    def test_clone_team_private_repo_with_access(self):
+        self.test_team_repo.public=False
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        user=None
+        for u in users:
+            user=u
+            break
+        self.test_team.setAccess(user, database.Team.ACC_VIEW)
+        self.assertGreater(user.keys.count(), 0)
+        key=None
+        for _key in user.keys:
+            key=_key
+            break
+        keyfile=self.keyfile_map[key.user_ssh_key_id]
+        clonedir="%s_%d"%(self.repo_clone_dir, self.test_team_repo.repository_id)
+        self.assertEqual(
+            self._shell("git clone %s %s"%(self.test_team_repo.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+            0
+            )
+        readme=os.path.join(clonedir, "README.md")
+        self.assertTrue(os.path.exists(os.path.dirname(readme)))
+        self.assertTrue(os.path.exists(readme))
+        with open(readme, "r") as fp:
+            self.assertEqual(fp.read(), "# %s\n\n%s\n"%(self.test_team_repo.name, self.test_team_repo.description))
+        shutil.rmtree(clonedir)
+
+    def test_push_team_repo_with_access(self):
+        self.test_team_repo.public=False
+        users=database.getStore().find(database.User)
+        self.assertGreater(users.count(), 0)
+        user=None
+        for u in users:
+            user=u
+            break
+        self.test_team.setAccess(user, database.Team.ACC_MODERATE)
+        self.assertGreater(user.keys.count(), 0)
+        key=None
+        for _key in user.keys:
+            key=_key
+            break
+        keyfile=self.keyfile_map[key.user_ssh_key_id]
+        clonedir="%s_%d"%(self.repo_clone_dir, self.test_team_repo.repository_id)
+
+        #clone the repo
+        self.assertEqual(
+            self._shell("git clone %s %s"%(self.test_team_repo.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+            0
+            )
+        readme=os.path.join(clonedir, "README.md")
+        self.assertTrue(os.path.exists(os.path.dirname(readme)))
+        self.assertTrue(os.path.exists(readme))
+        with open(readme, "r") as fp:
+            self.assertEqual(fp.read(), "# %s\n\n%s\n"%(self.test_team_repo.name, self.test_team_repo.description))
+
+        #make, commit, and push changes
+        with open(readme, "a") as fp:
+            fp.write("%s\n"%(self.test_team_repo.name,))
+        curdir=os.getcwd()
+        os.chdir(clonedir)
+        self.assertEqual(self._shell("git commit -am \"Test commit\""), 0)
+        self.assertEqual(self._shell("git push --all", env={"GIT_SSH_KEY": keyfile}), 0)
+        os.chdir(curdir)
+
+        #Remove all traces, re-clone and verify
+        shutil.rmtree(clonedir)
+        self.assertEqual(
+            self._shell("git clone %s %s"%(self.test_team_repo.getRepositoryCloneURI(), clonedir), env={"GIT_SSH_KEY": keyfile}),
+            0
+            )
+        readme=os.path.join(clonedir, "README.md")
+        self.assertTrue(os.path.exists(os.path.dirname(readme)))
+        self.assertTrue(os.path.exists(readme))
+        with open(readme, "r") as fp:
+            self.assertEqual(fp.read(), "# %s\n\n%s\n%s\n"%(self.test_team_repo.name, self.test_team_repo.description, self.test_team_repo.name))
+        shutil.rmtree(clonedir)
 
 if __name__ == '__main__':
     unittest.main()

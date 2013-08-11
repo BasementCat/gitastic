@@ -116,6 +116,47 @@ class UserSSHKey(Model):
 
 User.keys=ReferenceSet(User.user_id, UserSSHKey.user_id)
 
+class Team(Model, FilesystemPathValidationMixin):
+    ACC_SUPERADMIN=8
+    ACC_ADMIN=4
+    ACC_MODERATE=2
+    ACC_VIEW=1
+    ACC_NONE=0
+
+    __storm_table__="team"
+    team_id=Int(primary=True)
+    name=Unicode(default=u"")
+    description=Unicode()
+
+    @classmethod
+    def validateName(self, otherName):
+        self._validateFilesystemPathComponent(value=otherName, message="Your desired team name contains invalid characters")
+
+    def getAccess(self, other_user):
+        acc=None
+        try:
+            acc=getStore().find(TeamMembership, And(TeamMembership.team==self, TeamMembership.user==other_user)).one()
+        except NotOneError:
+            return self.ACC_NONE
+        return acc.access if acc else self.ACC_NONE
+
+    def setAccess(self, other_user, access):
+        if access not in (self.ACC_SUPERADMIN, self.ACC_ADMIN, self.ACC_MODERATE, self.ACC_VIEW, self.ACC_NONE):
+            raise RepositoryError("Access must be a valid access level")
+        getStore().find(TeamMembership, And(TeamMembership.team==self, TeamMembership.user==other_user)).remove()
+        if access!=self.ACC_NONE:
+            getStore().add(TeamMembership(team=self, user=other_user, access=access))
+        getStore().commit()
+
+class TeamMembership(Model):
+    __storm_table__="team_membership"
+    __storm_primary__=("team_id", "user_id")
+    team_id=Int()
+    team=Reference(team_id, Team.team_id)
+    user_id=Int()
+    user=Reference(user_id, User.user_id)
+    access=Int()
+
 class Repository(Model, FilesystemPathValidationMixin):
     ACC_OWNER=8
     ACC_ADMIN=4
@@ -136,6 +177,8 @@ class Repository(Model, FilesystemPathValidationMixin):
     public=Bool(default=True)
     owner_user_id=Int()
     owner_user=Reference(owner_user_id, User.user_id)
+    owner_team_id=Int()
+    owner_team=Reference(owner_team_id, Team.team_id)
 
     @classmethod
     def validateName(self, otherName):
@@ -154,12 +197,15 @@ class Repository(Model, FilesystemPathValidationMixin):
         return repo
 
     def getOwner(self):
-        return self.owner_user
+        #Teams take precedence over users
+        return self.owner_team or self.owner_user
 
     def getOwnerName(self):
         owner=self.getOwner()
         if isinstance(owner, User):
             return owner.username
+        elif isinstance(owner, Team):
+            return owner.name
         raise RepositoryError("The owner of repository %s #%d does not exist"%(self.name, self.repository_id))
 
     def _getAccess(self, other_user):
@@ -173,12 +219,23 @@ class Repository(Model, FilesystemPathValidationMixin):
     def getAccess(self, other_user):
         owner=self.getOwner()
         access=self._getAccess(other_user)
-        return max(
-            self.ACC_OWNER if isinstance(owner, User) and owner==other_user else self.ACC_NONE,
-            access,
-            self.ACC_VIEW if self.public else self.ACC_NONE,
-            self.ACC_NONE
-        )
+        if isinstance(owner, Team):
+            team_access=owner.getAccess(other_user)
+            return max(
+                self.ACC_OWNER if team_access==Team.ACC_SUPERADMIN else self.ACC_NONE,
+                self.ACC_ADMIN if team_access==Team.ACC_ADMIN else self.ACC_NONE,
+                self.ACC_PUSH if team_access==Team.ACC_MODERATE else self.ACC_NONE,
+                self.ACC_VIEW if team_access==Team.ACC_VIEW else self.ACC_NONE,
+                min(access, self.ACC_ADMIN),
+                self.ACC_NONE
+            )
+        else:
+            return max(
+                self.ACC_OWNER if owner==other_user else self.ACC_NONE,
+                access,
+                self.ACC_VIEW if self.public else self.ACC_NONE,
+                self.ACC_NONE
+            )
 
     def setAccess(self, other_user, access):
         if access==self.ACC_OWNER:
@@ -244,6 +301,7 @@ class Repository(Model, FilesystemPathValidationMixin):
                 shutil.rmtree(temp)
 
 User.repositories=ReferenceSet(User.user_id, Repository.owner_user_id)
+Team.repositories=ReferenceSet(Team.team_id, Repository.owner_team_id)
 
 class RepositoryAccess(Model):
     __storm_table__="repository_access"

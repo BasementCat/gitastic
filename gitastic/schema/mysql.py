@@ -73,4 +73,32 @@ schema={
 		ON DELETE CASCADE
 		ON UPDATE CASCADE)
 		ENGINE = InnoDB;""",
+	10: """ALTER TABLE `repository` ADD COLUMN `owner_team_id` BIGINT NOT NULL  AFTER `owner_user_id` ;""",
+	11: """
+		CREATE  TABLE `team` (
+		`team_id` BIGINT NOT NULL AUTO_INCREMENT ,
+		`name` VARCHAR(128) NOT NULL ,
+		`description` TEXT NOT NULL DEFAULT '' ,
+		PRIMARY KEY (`team_id`) ,
+		UNIQUE INDEX `name_UNIQUE` (`name` ASC) )
+		ENGINE = InnoDB;""",
+	12: """
+		CREATE  TABLE `team_membership` (
+		`team_id` BIGINT NOT NULL ,
+		`user_id` BIGINT NOT NULL ,
+		`access` INT NOT NULL DEFAULT 0 ,
+		PRIMARY KEY (`team_id`, `user_id`) ,
+		INDEX `fk_team_membership_team` (`team_id` ASC) ,
+		INDEX `fk_team_membership_user` (`user_id` ASC) ,
+		CONSTRAINT `fk_team_membership_team`
+		FOREIGN KEY (`team_id` )
+		REFERENCES `team` (`team_id` )
+		ON DELETE CASCADE
+		ON UPDATE CASCADE,
+		CONSTRAINT `fk_team_membership_user`
+		FOREIGN KEY (`user_id` )
+		REFERENCES `user` (`user_id` )
+		ON DELETE CASCADE
+		ON UPDATE CASCADE)
+		ENGINE = InnoDB;""",
 }

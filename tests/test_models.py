@@ -234,5 +234,99 @@ class TestRepositoryAccessModel(_ModelTestBase):
         with self.assertRaises(database.RepositoryError):
             self.repo.setAccess(self.repo_user, 173)
 
+class TestTeamModel(_ModelTestBase):
+    def test_create_duplicate(self):
+        team1=database.Team(name=u"Test-team1")
+        database.getStore().add(team1)
+        database.getStore().commit()
+        team2=database.Team(name=u"Test-team2")
+        database.getStore().add(team2)
+        database.getStore().commit()
+        with self.assertRaises(IntegrityError):
+            team3=database.Team(name=u"Test-team2")
+            database.getStore().add(team3)
+            database.getStore().commit()
+
+    def test_name_invalidchars(self):
+        with self.assertRaises(database.ValidationError):
+            database.Team.validateName(u"this has$invalid*chars!")
+
+    def test_name_validchars(self):
+        database.Team.validateName(u"this_has-invalid_chars")
+
+class TestTeamMembershipModel(_ModelTestBase):
+    def setUp(self):
+        super(TestTeamMembershipModel, self).setUp()
+        self.repo_owner=database.Team(username=u"Tester")
+        self.repo_user=database.User(username=u"Tester2", email=u"tester2@example.com", password=u"")
+        self.other_user=database.User(username=u"Tester3", email=u"tester3@example.com", password=u"")
+        self.repo=database.Repository(name=u"test-repo", description=u"Testing repo", public=False)
+        self.repo_owner.repositories.add(self.repo)
+        database.getStore().add(self.repo_owner)
+        database.getStore().add(self.repo_user)
+        database.getStore().add(self.other_user)
+        database.getStore().add(self.repo)
+        database.getStore().commit()
+
+    def test_ACC_SUPERADMIN(self):
+        self.repo_owner.setAccess(self.repo_user, database.Team.ACC_SUPERADMIN)
+        self.assertEqual(self.repo_owner.getAccess(self.repo_user), database.Team.ACC_SUPERADMIN)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_OWNER)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.other_user), database.Repository.ACC_NONE)
+
+    def test_ACC_ADMIN(self):
+        self.repo_owner.setAccess(self.repo_user, database.Team.ACC_ADMIN)
+        self.assertEqual(self.repo_owner.getAccess(self.repo_user), database.Team.ACC_ADMIN)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.other_user), database.Repository.ACC_NONE)
+
+    def test_ACC_MODERATE(self):
+        self.repo_owner.setAccess(self.repo_user, database.Team.ACC_MODERATE)
+        self.assertEqual(self.repo_owner.getAccess(self.repo_user), database.Team.ACC_MODERATE)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_PUSH)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.other_user), database.Repository.ACC_NONE)
+
+    def test_ACC_VIEW(self):
+        self.repo_owner.setAccess(self.repo_user, database.Team.ACC_VIEW)
+        self.assertEqual(self.repo_owner.getAccess(self.repo_user), database.Team.ACC_VIEW)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_VIEW)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertTrue(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.other_user), database.Repository.ACC_NONE)
+
+    def test_ACC_NONE(self):
+        self.repo_owner.setAccess(self.repo_user, database.Team.ACC_NONE)
+        self.assertEqual(self.repo_owner.getAccess(self.repo_user), database.Team.ACC_NONE)
+        self.assertEqual(self.repo.getAccess(self.repo_user), database.Repository.ACC_NONE)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_PUSH)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_CLONE)
+        self.assertFalse(self.repo.getAccess(self.repo_user)&database.Repository.PERM_VIEW)
+        self.assertEqual(self.repo.getAccess(self.other_user), database.Repository.ACC_NONE)
+
+        self.repo.public=True
+        self.assertFalse(self.repo.getAccess(self.other_user)&database.Repository.PERM_ADMIN)
+        self.assertFalse(self.repo.getAccess(self.other_user)&database.Repository.PERM_PUSH)
+        self.assertFalse(self.repo.getAccess(self.other_user)&database.Repository.PERM_CLONE)
+        self.assertFalse(self.repo.getAccess(self.other_user)&database.Repository.PERM_VIEW)
+
+    def test_invalid_level(self):
+        with self.assertRaises(database.RepositoryError):
+            self.repo_owner.setAccess(self.repo_user, 173)
+
 if __name__ == '__main__':
     unittest.main()
