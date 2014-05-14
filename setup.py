@@ -16,6 +16,6 @@ setup (
     url="",
     packages=["lunchroom", "tests"],
     test_suite="nose.collector",
-    install_requires=["bottle", "bcrypt", "multiconfig", "sqlalchemy", "pyyaml", "mysql-python"],
+    install_requires=["bottle", "bcrypt", "multiconfig", "sqlalchemy", "pyyaml", "mysql-python", "alembic"],
     tests_require=["nose"]
 )
