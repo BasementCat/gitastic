@@ -7,15 +7,15 @@ def read(filen):
         return fp.read()
  
 setup (
-    name = "gitastic",
+    name = "lunchroom",
     version = "0.1",
-    description="git-centric project management",
+    description="Manage lunches and impromptu events",
     long_description=read("README.md"),
     author="Alec Elton",
-    author_email="alec.elton@gmail.com", # Removed to limit spam harvesting.
-    url="http://github.com/basementcat/gitastic",
-    packages=["gitastic", "tests"],
+    author_email="alec.elton@gmail.com",
+    url="",
+    packages=["lunchroom", "tests"],
     test_suite="nose.collector",
-    install_requires=["storm", "furl", "multiconfig", "bcrypt"],
+    install_requires=["bottle", "bcrypt"],
     tests_require=["nose"]
 )

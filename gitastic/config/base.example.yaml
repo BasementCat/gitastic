@@ -1,8 +1,0 @@
-DatabaseURI: mysql://user:password@host:port/database
-User:
-    BcryptRounds: 12 #WARNING: this is logarithmic, DO NOT increase without extensive testing
-Repository:
-    Git: /usr/bin/git
-    BaseDirectory: /home/git/repositories
-Web:
-    FallbackHost: localhost

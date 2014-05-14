@@ -1,5 +1,5 @@
 include *.md
 include .gitignore
-graft gitastic
+graft lunchroom
 graft tests
 global-exclude *.pyc
