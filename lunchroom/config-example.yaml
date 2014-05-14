@@ -1,0 +1,2 @@
+# Base config
+Database: mysql://user:pass@host/db

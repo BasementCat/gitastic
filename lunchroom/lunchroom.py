@@ -1,5 +1,14 @@
 import bottle
 
+from multiconfig import getConfig
+
+from lib import models
+
+conf = getConfig('lunchroom')
+conf.load('config.yaml')
+
+models.init()
+
 app = bottle.Bottle()
 
 if __name__ == '__main__':
